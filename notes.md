@@ -1,6 +1,6 @@
 # TCP/IP网络编程
 
-## 开始网络编程
+## Part01 开始网络编程
 
 ### 理解网络编程和套间字
 
@@ -96,4 +96,99 @@ int udp_socket =socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 
 ```
+
+### 地址族与数据序列
+
+```c
+struct sockaddr_in {
+              sa_family_t sin_family; /* 地址族: AF_INET */
+              u_int16_t sin_port; /* 按网络字节次序的端口 */
+              struct in_addr sin_addr; /* internet地址 */
+    		  char sin_zero[8]; /* 不使用 */
+              };
+
+              /* Internet地址. */
+              struct in_addr {
+              u_int32_t s_addr; /* 按网络字节次序的地址 */
+              };
+
+字节序转换
+#include <arpa/inet.h>
+
+uint32_t htonl(uint32_t hostlong);
+
+uint16_t htons(uint16_t hostshort);
+
+uint32_t ntohl(uint32_t netlong);
+
+uint16_t ntohs(uint16_t netshort);
+
+将字符串信息转换为网络字节序的整数型
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int inet_aton(const char *cp, struct in_addr *inp);
+							成功返回1（true），失败返回0（false）
+功能与inet_addr完全相同
+string 含有需转换的IP地址信息的字符串地址值     	addr 将转换结果保存在in_addr结构体变量的地址值
+
+in_addr_t inet_addr(const char *cp);
+							传入点分十进制的IP，成功返回32位大端整数型值，失败返回INADDR_NONE
+
+in_addr_t inet_network(const char *cp);
+
+char *inet_ntoa(struct in_addr in);
+							成功返回转换的字符串地址值，失败时返回-1
+功能与inet_aton相反
+该函数返回的字符串在内部申请了空间并保存了字符串，该函数调用后，应立即将字符串信息复制到其他内存空间。防止再次调用该函数覆盖以前保存的信息
+
+struct in_addr inet_makeaddr(in_addr_t net, in_addr_t host);
+
+in_addr_t inet_lnaof(struct in_addr in);
+
+in_addr_t inet_netof(struct in_addr in);
+
+网络地址初始化
+struct sockaddr_in addr;
+char *serv_ip = "211.17.168.13"; //声明IP地址字符串
+char *serv_port = "9190"; //声明端口号字符串
+memset(&addr, 0, sizeof(addr)); //结构体变量addr所有成员初始化为0
+addr.sin_family = AF_INET; //指定地址族
+addr.sin_addr = inet_addr(serv_ip); //基于字符串的IP地址初始化
+addr.sin_port = htons(atoi(serv_port)); //基于字符串的端口号初始化
+
+服务器地址结构初始化
+INADDR_ANY
+struct sockaddr_in addr;
+char *serv_port = "9190";
+memset(&addr, 0, sizeof(addr));
+addr.sin_family = AF_INET;
+addr.sin_addr.s_addr = htonl(INADDR_ANY);
+addr.sin_port = htons(atoi(serv_port)); 
+
+向套间字分配网络地址
+int bind(int sockfd, struct sockaddr *my_addr, socklen_t addrlen);
+							成功返回0，失败返回-1
+sockfd 要分配地址信息（IP地址和端口号）的套间字文件描述符
+my_addr 存有地址信息的结构体变量的地址值
+addrlen 第二个结构体变量的长度
+int serv_sock, clnt_sock;
+struct sockaddr_in serv_addr, clnt_addr;
+char *serv_port = "9190";
+/* 创建服务器端套间字（监听套间字） */
+serv_sock = socket(PF_INET, SOCK_STREAM, 0);
+
+/* 地址信息初始化 */
+memset(&serv_addr, 0, sizeof(addr));
+serv_addr.sin_family = AF_INET;
+serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+serv_addr.sin_port = htons(atoi(serv_port)); 
+
+/* 分配地址信息 */
+bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+```
+
+### 基于TCP的服务器端/客户端（1）
 
