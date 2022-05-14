@@ -192,3 +192,49 @@ bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 
 ### 基于TCP的服务器端/客户端（1）
 
+```c
+TCP服务器端的默认函数调用顺序
+socket();
+bind();
+listen();
+accept();
+read()/write();
+close();
+
+#include <sys/socket.h>
+
+int listen(int s, int backlog)
+    成功返回0，失败返回-1
+s 希望进入等待连接请求状态的套间字文件描述符，传递的描述符套间字参数成为服务器端套间字（监听套间字）
+backlog 连接请求等待队列（Queue）的长度，若为5，则队列长度为5，表示最多使5个连接请求进入队列
+    
+#include <sys/types.h>
+#include <sys/socket.h>
+
+int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
+	成功返回创建的套间字文件描述符，失败时返回-1
+s 服务器套间字的文件描述符
+addr 保存发起连接请求的客户端的地址信息的变量地址值，调用函数后传递来的地址变量参数填充客户端地址信息
+addrlen 第二个参数addr结构体的长度，但是存有长度的变量地址。函数调用完成后，改变量即被填入客户端地址长度
+        
+TCP客户端的默认函数调用顺序
+socket();
+connect();
+read() / write();
+close();
+
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
+
+int connect(int sockfd, const struct sockaddr *servaddr, socklen_t addrlen);
+	成功返回0，失败返回-1。
+sock 客户端套间字文件描述符
+servaddr 保存目标服务器端地址信息的变量地址值
+addrlen 以字节为单位传递已传递给第二个结构体参数servaddr的地址变量长度
+客户端调用connect函数后，以下情况才会返回
+服务器端接收连接请求
+发生断网等异常情况而中断连接请求
+```
+
+
+
