@@ -1,3 +1,7 @@
+/*
+    实现计算器客户端
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +17,7 @@ int main(int argc, char *argv[])
 {
     int sock;
     char message[BUF_SIZE];
-    int str_len, recv_len, recv_cnt;
+    int str_len;
     struct sockaddr_in serv_addr;
 
     if (argc != 3)
@@ -45,28 +49,22 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        fputs("Input message(Q to quit): ", stdout);
-        fgets(message, BUF_SIZE, stdin);
+        fputs("Input message(Q to quit): \n", stdout);
+        // read函数返回值为读取的字符数，read会读取\n，而且不会添加'\0'
+        ret = read(STDIN_FILENO, message, BUF_SIZE);
+        message[ret - 1] = 0;
 
-        if (!strcmp(message, "Q\n") || !strcmp(message, "q\n"))
+        if (!strcmp(message, "Q") || !strcmp(message, "q"))
         {
             break;
         }
 
-        str_len = write(sock, message, strlen(message));
-        
-        recv_len = 0;
-        while (recv_len < str_len)
+        write(sock, message, ret);
+        if (!strcmp(message, "+") || !strcmp(message, "-") || !strcmp(message, "*") || !strcmp(message, "/"))
         {
-            recv_cnt = read(sock, message, BUF_SIZE-1);
-            if (recv_cnt == -1)
-            {
-                error_handling("read() error!");
-            }
-            recv_len += recv_cnt;
+            str_len = read(sock, message, BUF_SIZE - 1);
+            printf("Message from server: %d\n", *((int *)message));
         }
-        message[recv_len] = 0;
-        printf("Message from server: %s", message);
     }
     close(sock);
 
