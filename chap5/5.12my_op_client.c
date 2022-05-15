@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
     {
         fputs("Input message(Q to quit): \n", stdout);
         // read函数返回值为读取的字符数，read会读取\n，而且不会添加'\0'
-        ret = read(STDIN_FILENO, message, BUF_SIZE);
+        ret = read(STDIN_FILENO, message, BUF_SIZE - 1);
         message[ret - 1] = 0;
 
         if (!strcmp(message, "Q") || !strcmp(message, "q"))

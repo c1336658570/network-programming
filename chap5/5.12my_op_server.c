@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
         }
 
         // read函数返回值为读取的字符数，read会读取\n，而且不会添加'\0'
-        while ((ret = read(clnt_sock, buf, BUF_SIZE)) != -1 && ret != 0)
+        while ((ret = read(clnt_sock, buf, BUF_SIZE - 1)) != -1 && ret != 0)
         {
             printf("read() buf = %s\n", buf);
 
