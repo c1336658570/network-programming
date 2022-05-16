@@ -240,3 +240,66 @@ addrlen 以字节为单位传递已传递给第二个结构体参数servaddr的�
 
 ### 基于TCP的服务器端/客户端（2）
 
+```c
+TCP原理
+
+TCP套间字中的I/O缓冲
+I/O缓冲在每个TCP套间字中单独存在。
+I/O缓冲在创建套间字时自动生成。
+即使关闭套间字也会继续传递输出缓冲区中的遗留的数据。
+关闭套间字将丢失输入缓冲中的数据
+```
+
+
+
+### 基于UDP的服务器端/客户端
+
+```c
+流控制是区分TCP和UDP的最重要的标志
+    
+UDP的高效使用
+TCP比UDP慢的原因通常有以下两点。
+收发数据前后进行的连接设置及清除过程
+收发数据过程中为保证可靠性而添加的流程控制
+    
+UDP不需要listen和accept函数，UDP进行通信只需要一个套间字。
+UDP不建立连接，所以每次传输信息需要添加目标地址信息。
+#include <sys/types.h>
+#include <sys/socket.h>
+
+ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+
+ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
+               const struct sockaddr *dest_addr, socklen_t addrlen);
+	成功返回传输的字节数，失败返回-1
+sockfd 用于传输数据的UDP套间字文件描述符
+buf 保存待传输数据的缓冲地址值
+len 待传输的数据长度，以字节为单位
+flags 可选参数，若没有则传递0
+dest_addr 存有目标地址信息的sockaddr结构体变量的地址值
+addrlen 传递给参数dest_addr的地址结构体变量长度
+        
+ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags);
+
+#include <sys/types.h>
+#include <sys/socket.h>
+
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+
+ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
+                 struct sockaddr *src_addr, socklen_t *addrlen);
+sockfd 用于接收数据的UDP文件描述符
+buf 保存接收输数据的缓冲地址值
+len 可接受的最大字节数，以字节为单位
+flags 可选参数，若没有则传递0
+dest_addr 存有目标地址信息的sockaddr结构体变量的地址值
+addrlen 传递给参数dest_addr的地址结构体变量长度
+
+ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
+
+UDP的数据传输特性和调用connect函数
+
+TCP数据传输中不存在边界，即数据传输过程中调用I/O函数的次数不具有任何意义
+相反，UDP是具有数据边界协议，传输中调用I/O函数的次数非常重要。因此，输入函数的调用应和输出函数的调用次数完全一致，这样才能保证数据全部被接收
+```
+

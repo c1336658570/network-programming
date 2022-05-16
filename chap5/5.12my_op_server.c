@@ -22,6 +22,12 @@ int main(int argc, char *argv[])
     char buf[BUF_SIZE];
     int calculate[BUF_SIZE];
 
+    if (argc != 2)
+    {
+        printf("Usage : %s <port>\n", argv[0]);
+        exit(1);
+    }
+
     bzero(calculate, sizeof(calculate));
     bzero(&serv_sock, sizeof(serv_sock));
     memset(&clnt_sock, 0, sizeof(clnt_sock));
