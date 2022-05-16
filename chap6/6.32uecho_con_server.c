@@ -1,10 +1,3 @@
-/*
-UDP是具有数据边界协议，传输中调用I/O函数的次数非常重要。因此，输入函数的调用应和输出函数的调用次数完全一致，
-这样才能保证数据全部被接收
-
-验证发送数据和接收数据次数应该一致
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,7 +12,7 @@ void error_handling(char *message);
 int main(int argc, char *argv[])
 {
     int serv_sock;
-    int str_len, i;
+    int str_len;
     char message[BUF_SIZE];
     socklen_t clnt_addr_len;
     struct sockaddr_in serv_addr, clnt_addr;
@@ -47,12 +40,11 @@ int main(int argc, char *argv[])
         error_handling("bind() error");
     }
 
-    for (i = 0; i < 3; ++i)
+    while (1)
     {
-        sleep(5); // delay 5 sec
         clnt_addr_len = sizeof(clnt_addr);
         str_len = recvfrom(serv_sock, message, BUF_SIZE, 0, (struct sockaddr *)&clnt_addr, &clnt_addr_len);
-        printf("Message %d: %s \n", i + 1, message);
+        sendto(serv_sock, message, str_len, 0, (struct sockaddr *)&clnt_addr, clnt_addr_len);
     }
     close(serv_sock);
 
