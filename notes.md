@@ -312,3 +312,21 @@ UDP中无须注册目标IP和端口号，因此sendto函数传输大致分文以
 UDP套间字调用connect并不意味着与对方UDP套间字连接，而是向UDP套间字注册目标IP和端口信息。这样每次调用sendto只需传输数据。不止能调用sendto、recvfrom，而且还可以调用write,read等函数
 ```
 
+### 优雅地端开套间字连接
+
+```c
+#include <sys/socket.h>
+
+int shutdown(int sockfd, int how);
+	成功时返回0，失败时返回-1。
+
+sock 需要断开的套间字文件描述符。
+howto 传递断开方式信息。
+SHUT_RD：端开输入流
+SHUT_WR：端开输出流。
+SHUT_RDWR：同时端开I/O流。
+调用SHUT_WR断开输出流，如果输出流缓冲区中还有未传输的数据，则将传递至目标主机。
+```
+
+
+
