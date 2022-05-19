@@ -328,5 +328,53 @@ SHUT_RDWR：同时端开I/O流。
 调用SHUT_WR断开输出流，如果输出流缓冲区中还有未传输的数据，则将传递至目标主机。
 ```
 
+### 域名系统
 
+```c
+ping www.naver.com			查看目标DNS的IP地址
+nslookup  会提示进一步输入信息，此时输入server得到默认DNS服务器地址
+    
+利用域名获取IP地址
+#include <netdb.h>
+extern int h_errno;
+
+struct hostent *gethostbyname(const char *name);
+	成功时返回hostent结构体地址，失败时返回NULL指针
+   struct hostent {
+               char  *h_name;            /* official name of host */
+               char **h_aliases;         /* alias list */
+               int    h_addrtype;        /* host address type */
+               int    h_length;          /* length of address */
+               char **h_addr_list;       /* list of addresses */
+           }
+h_name
+    存有官方域名。官方域名代表某一主页，但实际上，一些著名公司的域名并未使用官方域名注册
+h_aliases
+    可以通过多个域名访问同一主页。同一IP可以绑定多个域名，因此，除官方域名外还可以指定其他域名。这些信息可以通过h_aliases获得。
+h_addrtype
+    gethostbyname函数不仅支持IPv4，还支持IPv6。因此可以通过此变量获取保存在h_addr_list的IP地址的地址族信息。若是IPv4，则此变量存有AF_INET。
+h_length
+    保存IP地址长度。若是IPv4地址，因为是4字节，则保存4；IPv6时，因为时16个字节，故保存16。
+h_addr_list
+    最重要的成员。 通过此变量以整数形式保存域名对应的IP地址。另外，用户较多的网站可能分配多个IP给同一域名，利用多个服务器进行负载均衡。此时同样可以通过此变量获取IP地址信息。
+    
+char *inet_ntoa(struct in_addr in);
+typedef uint32_t in_addr_t;
+struct in_addr {
+    in_addr_t s_addr;
+};
+将整数形式的域名所对应的IP地址转为字符串类型，返回指针
+for (int i = 0; host->h_addr_list[i]; ++i)
+{
+    printf("IP addr %d: %s \n", i + 1, inet_ntoa(*(struct in_addr *)host>h_addr_list[i]));
+}
+
+利用IP地址获取域名
+include <sys/socket.h>       /* for AF_INET */
+struct hostent *gethostbyaddr(const void *addr, socklen_t len, int type);
+	成功时返回hostent结构体变量地址值，失败时返回NULL指针
+addr 含有IP地址信息的in_addr结构体指针。为了同时传递IPv4地址之外的其他信息，该变量的类型声明为void指针
+len 向第一个参数传递的地址信息的字节数，IPv4为4，IPv6为16
+type 传递地址族信息，IPv4时为AF_INET，IPv6时为AF_INET6。
+```
 
