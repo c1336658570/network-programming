@@ -378,3 +378,29 @@ len 向第一个参数传递的地址信息的字节数，IPv4为4，IPv6为16
 type 传递地址族信息，IPv4时为AF_INET，IPv6时为AF_INET6。
 ```
 
+### 套间字的多种选项
+
+```c
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
+
+//读取套间字选项
+int getsockopt(int sockfd, int level, int optname,
+               void *optval, socklen_t *optlen);
+	成功时返回0，失败时返回-1。
+sock 用于查看选项套间字文件描述符
+level 要查看的可选项的协议层
+optname 要查看的可选项名
+optval 保存查看结果的缓冲地址值。
+optlen 向第四个参数optval传递缓冲大小。调用函数后，该变量中保存通过第四个参数返回的可选信息的字节数
+    
+int setsockopt(int sockfd, int level, int optname,
+               const void *optval, socklen_t optlen);
+	成功时返回0，失败时返回-1。
+sock 用于更改可选项的套间字文件描述符
+level 要更改的可选项协议层
+optname 要更改的可选项名
+optval 保存要更改的选项信息的缓冲地址值
+optlen 向第四个参数optval传递的可选项信息的字节数
+```
+
