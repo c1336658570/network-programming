@@ -402,5 +402,30 @@ level 要更改的可选项协议层
 optname 要更改的可选项名
 optval 保存要更改的选项信息的缓冲地址值
 optlen 向第四个参数optval传递的可选项信息的字节数
+        
+套间字的类型在创建时决定，以后不能更改
+
+SO_SNDBUF & SO_RCVBUF
+setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (void *)&rcv_buf, sizeof(rcv_buf)); 设置输入缓冲大小
+getsockopt(sock, SOL_SOCKET, SO_RCVBUF, (void *)&rcv_buf, &len); 获取输入缓冲大小
+setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (void *)&snd_buf, sizeof(snd_buf)); 设置输出缓冲大小
+getsockopt(sock, SOL_SOCKET, SO_SNDBUF, (void *)&snd_buf, &len); 获取输出缓冲大小
+
+SO_REUSEADDR
+设置端口复用
+optlen=sizeof(option);
+option=TRUE;
+setsockopt(serv_sock, SOL_SOCKET, SO_REUSEADDR, &option, optlen);
+
+#include <netinet/tcp.h>
+禁用Nagle算法
+int opt_val = 1;
+setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (void *)&opt_val, sizeof(opt_val));
+通过TCP_NODELAY的值查看Nagle算法的设置状态
+int opt_val;
+socklen_t opt_len;
+opt_len = sizeof(opt_val);
+getsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (void *)&opt_val, &opt_len);
+如果正在使用Nagle算法，opt_val变量中会保存0，如果已禁用Nagle算法，则保存1
 ```
 
