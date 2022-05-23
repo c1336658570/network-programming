@@ -429,3 +429,36 @@ getsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (void *)&opt_val, &opt_len);
 如果正在使用Nagle算法，opt_val变量中会保存0，如果已禁用Nagle算法，则保存1
 ```
 
+
+
+### 多进程服务器端
+
+```c
+通过调用fork函数创建进程
+pid_t fork(void);
+
+销毁僵尸进程
+#include <sys/types.h>
+#include <sys/wait.h>
+
+pid_t wait(int *wstatus);
+pid_t waitpid(pid_t pid, int *wstatus, int options);
+int waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options);
+#include <signal.h>
+typedef void (*sighandler_t)(int);
+sighandler_t signal(int signum, sighandler_t handler);
+注册信号处理函数
+
+#include <signal.h>
+int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
+struct sigaction {
+               void     (*sa_handler)(int);
+               void     (*sa_sigaction)(int, siginfo_t *, void *);
+               sigset_t   sa_mask;
+               int        sa_flags;
+               void     (*sa_restorer)(void);
+           };
+
+发生信号将唤醒由于调用sleep函数而进入阻塞状态的进程。
+```
+
