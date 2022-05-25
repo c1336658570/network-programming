@@ -476,3 +476,23 @@ struct sigaction {
        int pipe(int pipefd[2]);
 ```
 
+### I/O复用
+
+```c
+void FD_CLR(int fd, fd_set *set);  从参数set指向的变量中清除文件描述符fd的信息
+int  FD_ISSET(int fd, fd_set *set); 若参数fdset指向的变量中包含文件描述符fd的信息，则返回“真”
+void FD_SET(int fd, fd_set *set); 在参数set指向的变量中注册文件描述符fd的信息
+void FD_ZERO(fd_set *set); 将fd_set变量的所有位初始化为0
+宏函数，对select要监视的文件描述符进行操作
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+int select(int nfds, fd_set *readfds, fd_set *writefds,fd_set *exceptfds, struct timeval *timeout);
+	成功时返回大于0的值，失败时返回-1。
+maxfd 监视对象文件描述符数量。
+readset 将所有关注“是否存在待读取数据“的文件描述符注册到fd_set型变量，并传递其地址值。
+writeset 将所有关注”是否可传输无阻塞数据”的文件描述符注册到fd_set型变量，并传递其地址值。
+exceptset 将所有关注“是否发生异常”的文件描述符注册到fd_set型变量，并传递其地址值。
+```
+
