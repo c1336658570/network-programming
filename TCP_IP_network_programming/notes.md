@@ -458,7 +458,21 @@ struct sigaction {
                int        sa_flags;
                void     (*sa_restorer)(void);
            };
-
 发生信号将唤醒由于调用sleep函数而进入阻塞状态的进程。
+```
+
+#### 进程间通信
+
+```c
+#include <unistd.h>
+
+       /* On Alpha, IA-64, MIPS, SuperH, and SPARC/SPARC64; see NOTES */
+       struct fd_pair {
+           long fd[2];
+       };
+       struct fd_pair pipe();
+
+       /* On all other architectures */
+       int pipe(int pipefd[2]);
 ```
 
