@@ -7,7 +7,11 @@
     "unistd.h": "c",
     "socket.h": "c",
     "wait.h": "c",
+<<<<<<< HEAD
     "signal.h": "c",
     "stdlib.h": "c"
+=======
+    "signal.h": "c"
+>>>>>>> 568dff3afc4e617d0b176baa6af48a1cd81a8240
   }
 }
