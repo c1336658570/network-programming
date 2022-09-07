@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
+#include <bits/sigaction.h>
 
 void timeout(int sig)
 {

@@ -638,3 +638,550 @@ addr.sin6_port = htons(SOME_PORT_NUM);
 - getnameinfo()函数执行逆向转换，即将一个 IP 地址和端口号转换成对应的主机名和服务名。
 - 使用 getaddrinfo()和 getnameinfo()还可以在二进制 IP 地址与其展现格式之间进行转换。
 - DNS 允许协作服务器维护一个将二进制 IP 地址映射到主机名和将主机名映射到二进制 IP 地址的分布式数据库。诸如 DNS 之类的系统的存在对于因特网的运转是非常关键的，因为对浩瀚的因特网主机名进行集中管理是不可能的。/etc/services 文件将端口号映射到符号服务名。
+
+### inet_pton()和 inet_ntop()函数
+
+- inet_pton()和 inet_ntop()函数允许在 IPv4 和 IPv6 地址的二进制形式和点分十进制表示法或十六进制字符串表示法之间进行转换。
+
+```c
+#include <arpa/inet.h>
+
+int inet_pton(int af, const char *src, void *dst);
+const char *inet_ntop(int af, const void *src, char *dst, socklen_t size);
+```
+
+- 这些函数名中的 p 表示“展现（presentation）”，n 表示“网络（network）”。展现形式是
+  人类可读的字符串，如：
+
+1. 204.152.189.116（IPv4 点分十进制地址）；
+2. ::1（IPv6 冒号分隔的十六进制地址）；
+3. ::FFFF:204.152.189.116（IPv4 映射的 IPv6 地址）。
+
+- inet_pton()函数将 src_str 中包含的展现字符串转换成网络字节序的二进制 IP 地址。 domain 参数应该被指定为 AF_INET 或 AF_INET6。转换得到的地址会被放在 addrptr 指向的结构中，它应该根据在 domain 参数中指定的值指向一个 in_addr 或 in6_addr 结构。
+
+- inet_ntop()函数执行逆向转换。同样， domain 应该被指定为 AF_INET 或 AF_INET6，addrptr 应该指向一个待转换的 in_addr 或 in6_addr 结构。得到的以 null 结尾的字符串会被放置在 dst_str 指向的缓冲器中。len 参数必须被指定为这个缓冲器的大小。inet_ntop()在成功时会返回 dst_str。如果 len 的值太小了，那么 inet_ntop()会返回 NULL 并将 errno设置成 ENOSPC。
+
+- 要正确计算 dst_str 指向的缓冲器的大小可以使用在<netinet/in.h>中定义的两个常量。这些常量标识出了 IPv4 和 IPv6 地址的展现字符串的最大长度（包括结尾的 null 字节）。
+- #define INET_ADDRSTRLEN 16
+- #define INET6_ADDRSTRLEN 46
+
+### 域名系统（DNS）
+
+- 在 59.10 节中将会介绍获取与一个主机名对应的 IP 地址的 getaddrinfo()函数和执行逆向转换的 getnameinfo()函数，但在介绍这些函数之前需要解释如何使用 DNS 来维护主机名和 IP地址之间的映射关系。
+- gethostbyname()函数（被 getaddrinfo()取代的函数）通过搜索这个文件并找出与规范主机名（即主机的官方或主要名称）或其中一个别名（可选的，以空格分隔）匹配的记录来获取一个IP 地址。
+- DNS 的关键想法如下。
+
+1. 将主机名组织在一个层级名空间中（图 59-2）。DNS 层级中的每一个节点都有一个标签（名字），该标签最多可包含 63 个字符。层级的根是一个无名子的节点，即“匿名节点”。
+2. 一个节点的域名由该节点到根节点的路径中所有节点的名字连接而成，各个名字之间用点（.）分隔。如 google.com 是节点 google 的域名。
+3. 完全限定域名（fully qualified domain name，FQDN），如 www.kernel.org.，标识出了层级中的一台主机。区分一个完全限定域名的方法是看名字是否已点结尾，但在很多情况下这个点会被省略。
+4. 没有一个组织或系统会管理整个层级。相反，存在一个 DNS 服务器层级，每台服务器管理树的一个分支（一个区域）。通常，每个区域都有一个主要主名字服务器。此外，还包含一个或多个从名字服务器（有时候也被称为次要主名字服务器），它们在主要主名字服务器崩溃时提供备份。区域本身可以被划分成一个个单独管理的更小的区域。当一台主机被添加到一个区域中或主机名到 IP 地址之间的映射关系发生变化时，管理员负责更新本地名字服务器上的名字数据中的对应名字。（无需手动更改层级中其他名字服务器数据库）。
+5. 当一个程序调用 getaddrinfo()来解析（即获取 IP 地址）一个域名时，getaddrinfo()会使用一组库函数（resolver 库）来与本地的 DNS 服务器通信。如果这个服务器无法提供所需的信息，那么它就会与位于层级中的其他 DNS 服务器进行通信以便获取信息。有时候，这个解析过程可能会花费很多时间，DNS 服务器采用了缓存技术来避免在查询常见域名时所发生的不必要的通信。
+
+- 使用上面的方法使得 DNS 能够处理大规模的名空间，同时无需对名字进行集中管理。
+
+#### 递归和迭代的解析请求
+
+- DNS 解析请求可以分为两类：递归和迭代。在一个递归请求中，请求者要求服务器处理整个解析任务，包括在必要的时候与其他 DNS 服务器进行通信的任务。当位于本地主机上的一个应用程序调用 getaddrinfo()时，该函数会向本地 DNS 服务器发起一个递归请求。如果本地 DNS 服务器自己并没有相关信息来完成解析，那么它就会迭代地解析这个域名。
+
+
+
+![image.95ION1](/tmp/evince-216861/image.95ION1.png)
+
+
+
+- 假 设 本 地 DNS 服 务 器 需 要 解 析 一 个 名 字www.otago.ac.nz。要完成这个任务，它首先与每个 DNS 服务器都知道的一小组根名字服务器中的一个进行通信。（使用命令 dig . NS 或从网页 http://www.root-servers.org/上可以获取这组服务器列表。）给定名字 www.otago.ac.nz，根名字服务器会告诉本 DNS 服务器到其中一台 nzDNS 服务器上查询。然后本地 DNS 服务器会在 nz 服务器上查询名字 www.otago.ac.nz，并收到一个到 ac.nz 服务器上查询的响应。之后本地 DNS 服务器会在 ac.nz 服务器上查询名字www.otago.ac.nz 并被告知查询 otago.ac.nz 服务器。最后本地 DNS 服务器会在 otago.ac.nz 服务器上查询 www.otago.ac.nz 并获取所需的 IP 地址。
+- 如果向 gethostbyname()传递了一个不完整的域名，那么解析器在解析之前会尝试补全。域名补全的规则是在/etc/resolv.conf 中定义的（参见 resolv.conf(5)手册）。在默认情况下，解析器至少会使用本机的域名来补全。例如，如果登录机器 oghma.otago.ac.nz 并输入了命令 ssh octavo，得到的 DNS 查询将会以 octavo.otago.ac.nz 作为其名字。
+
+### /etc/services 文件
+
+- 众所周知的端口号是由 IANA 集中注册的，其中每个端口都有一个对应的服务名。由于服务号是集中管理并且不会像 IP 地址那样频繁变化，因此没有必getaddrinfo()要采用 DNS 服务器来管理它们。相反，端口号和服务名会记录在文件/etc/services 中。和 getnameinfo()函数会使用这个文件中的信息在服务名和端口号之间进行转换。
+
+
+
+![image.EOVPN1](/tmp/evince-216861/image.EOVPN1.png)
+
+
+
+- 协议通常是 tcp 或 udp。可选的（以空格分隔）别名指定了服务的其他名字。此外，每一行中都可能会包含以#字符打头的注释。
+
+- 正如之前指出的那样，一个给定的端口号引用 UDP 和 TCP 的的唯一实体，但 IANA 的策略是将两个端口都分配给服务，即使服务只使用了其中一种协议。如 telnet、ssh、HTTP 以及SMTP，它们都只使用 TCP，但对应的 UDP 端口也被分配给了这些服务。相应地，NTP 只使用 UDP，但 TCP 端口 123 也被分配给了这个服务。在一些情况中，一个服务既会使用 TCP也会使用 UDP，DNS 和 encho 就是这样的服务。最后，还有一些极少出现的情况会将数值相同的 UDP 和 TCP 端口分配给不同的服务，如 rsh 使用 TCP 端口 514，而 syslog daemon（37.5 节）则是使用了 UDP 端口 514。这是因为这些端口在采用现行的 IANA 策略之前就分配出去了。
+
+- /etc/services 文件仅仅记录着名字到数字的映射关系。它不是一种预留机制：在/etc/services中存在一个端口号并不能保证在实际环境中特定的服务就能够绑定到该端口上
+
+### 独立于协议的主机和服务转换
+
+- getaddrinfo()函数将主机和服务名转换成 IP 地址和端口号，它作为过时的 gethostbyname()和 getservbyname()函数的（可重入的）接替者被定义在了 POSIX.1g 中。（使用 getaddrinfo()替换 gethostbyname()能够从程序中删除 IPv4 与 IPv6 的依赖关系。）
+- getnameinfo()函数是 getaddrinfo()的逆函数，它将一个 socket 地址结构（IPv4 或 IPv6）转换成包含对应主机和服务名的字符串。这个函数是过时的 gethostbyaddr()和 getservbyport()函数的（可重入的）等价物。
+
+#### getaddrinfo()函数
+
+- 给定一个主机名和服务器名，getaddrinfo()函数返回一个 socket 地址结构列表，每个结构都包含一个地址和端口号。
+
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
+int getaddrinfo(const char *host, const char *service,
+                const struct addrinfo *hints,
+                struct addrinfo **result);
+
+struct addrinfo {
+               int              ai_flags;
+               int              ai_family;
+               int              ai_socktype;
+               int              ai_protocol;
+               socklen_t        ai_addrlen;
+               struct sockaddr *ai_addr;
+               char            *ai_canonname;
+               struct addrinfo *ai_next;
+           };
+
+成功时返回 0，发生错误时返回非零值。
+```
+
+- getaddrinfo()以 host、service 以及 hints 参数作为输入，其中 host 参数包含一个主机名或一个以 IPv4 点分十进制标记或 IPv6 十六进制字符串标记的数值地址字符串。（准确地讲， getaddrinfo()接受在 59.13.1 节中描述的更通用的数字和点标记的 IPv4 数值字符串。） service 参数包含一个服务名或一个十进制端口号。hints 参数指向一个 addrinfo 结构，该结构规定了选择通过 result 返回的 socket 地址结构的标准。稍后会介绍有关 hints 参数的更多细节。
+
+- getaddrinfo()会动态地分配一个包含 addrinfo 结构的链表并将 result 指向这个列表的表头。每个 addrinfo 结构包含一个指向与 host 和 service 对应的 socket 地址结构的指针（图 59-3）
+- result 参数返回一个结构列表而不是单个结构，因为与在 host、service 以及 hints 中指定的标准对应的主机和服务组合可能有多个。如查询拥有多个网络接口的主机时可能会返回多个地址结构。此外，如果将 hints.ai_socktype 指定为 0，那么就可能会返回两个结构—一个用于 SOCK_DGRAMsocket，另一个用于 SOCK_STREAM socket—前提是给定的 service 同时对 TCP 和 UDP 可用。
+- 通过 result 返回的 addrinfo 结构的字段描述了关联 socket 地址结构的属性。 ai_family 字段会被设置成 AF_INET 或 AF_INET6，表示该 socket 地址结构的类型。ai_socktype 字段会被设置成 SOCK_STREAM 或 SOCK_DGRAM，表示这个地址结构是用于 TCP 服务还是用于 UDP服务。ai_protocol 字段会返回与地址族和 socket 类型匹配的协议值。（ai_family、ai_socktype以及 ai_protocol 三个字段为调用 socket()创建该地址上的 socket 时所需的参数提供了取值。）ai_addrlen 字段给出了 ai_addr 指向的 socket 地址结构的大小（字节数）。 in_addr 字段指向 socket地址结构（IPv4 时是一个 in_addr 结构，IPv6 时是一个 in6_addr 结构）。ai_flags 字段未用（它用于 hints 参数）。 ai_canonname 字段仅由第一个 addrinfo 结构使用并且其前提是像下面所描述的那样在 hints.ai_flags 中使用了 AI_CANONNAME 字段。
+- 与 gethostbyname()一样，getaddrinfo()可能需要向一台 DNS 服务器发送一个请求，并且这个请求可能需要花费一段时间来完成。同样的过程也适用于 getnameinfo()，具体可参考 59.10.4 节中的描述。
+
+
+
+![image.EF6XN1](/tmp/evince-216861/image.EF6XN1.png)
+
+#### hints 参数
+
+- hints 参数为如何选择 getaddrinfo()返回的 socket 地址结构指定了更多的标准。当用作 hints参数时只能设置 addrinfo 结构的 ai_flags、ai_family、ai_socktype 以及 ai_protocol 字段，其他字段未用到，并将应该根据具体情况将其初始化为 0 或 NULL。
+- hints.ai_family 字段选择了返回的 socket 地址结构的域，其取值可以是 AF_INET 或AF_INET6（或其他一些 AF_*常量，只要实现支持它们）。如果需要获取所有种类 socket 地址结构，那么可以将这个字段的值指定为 AF_UNSPEC。
+- hints.ai_socktype 字段指定了使用返回的 socket 地址结构的 socket 类型。如果将这个字段指定为 SOCK_DGRAM，那么查询将会在 UDP 服务上执行，对应的 socket 地址结构会通过result 返回。如果指定了 SOCK_STREAM，那么将会执行一个 TCP 服务查询。如果将hints.ai_socktype 指定为 0，那么任意类型的 socket 都是可接受的。
+- hints.ai_protocol 字段为返回的地址结构选择了 socket 协议。在本书中，这个字段的值总是会被设置为 0，表示调用者接受任何协议。
+- hints.ai_flags 字段是一个位掩码，它会改变 getaddrinfo()的行为。这个字段的取值是下列值中的零个或多个取 OR 得来的。
+
+AI_ADDRCONFIG
+
+- 在本地系统上至少配置了一个 IPv4 地址时返回 IPv4 地址（不是 IPv4 回环地址），在本地系统上至少配置了一个 IPv6 系统时返回 IPv6 地址（不是 IPv6 回环地址）。
+
+AI_ALL
+
+- 参见下面对 AI_V4MAPPED 的描述。
+
+AI_CANONNAME
+
+- 如果 host 不为 NULL，那么返回一个指向以 null 结尾的字符串，该字符串包含了主机的规范名。这个指针会在通过 result 返回的第一个 addrinfo 结构中的 ai_canonname 字段指向的缓冲器中返回。
+
+AI_NUMERICHOST
+
+- 强制将 host 解释成一个数值地址字符串。这个常量用于在不必要解析名字时防止进行名字解析，因为名字解析可能会花费较长的时间。
+
+AI_NUMERICSERV
+
+- 将 service 解释成一个数值端口号。这个标记用于防止调用任意的名字解析服务，因为当service 为一个数值字符串时这种调用是没有必要的。
+
+AI_PASSIVE
+
+- 返回一个适合进行被动式打开（即一个监听 socket）的 socket 地址结构。在这种情况下，host 应该是 NULL，通过 result 返回的 socket 地址结构的 IP 地址部分将会包含一个通配 IP 地址（即 INADDR_ANY 或 IN6ADDR_ANY_INIT）。如果没有设置这个标记，那么通过 result 返回的地址结构将能用于 connect()和 sendto()；如果 host 为 NULL，那么返回的 socket 地址结构中的IP 地址将会被设置成回环 IP 地址 （根据所处的域，其值为 INADDR_LOOPBACK 或IN6ADDR_LOOPBACK_INIT）。
+
+AI_V4MAPPED
+
+- 如果在 hints 的 ai_family 字段中指定了 AF_INET6，那么在没有找到匹配的 IPv6 地址时应该在 result 返回 IPv4 映射的 IPv6 地址结构。如果同时指定了 AI_ALL 和 AI_V4MAPPED，那么在 result 中会同时返回 IPv6 和 IPv4 地址，其中 IPv4 地址会被返回成 IPv4 映射的 IPv6 地址结构。
+- 正如前面介绍 AI_PASSIVE 时指出的那样，host 可以被指定为 NULL。此外，还可以将service 指定为 NULL，在这种情况下，返回的地址结构中的端口号会被设置为 0（即只关心将主机名解析成地址）。然而无法将 host 和 service 同时指定为 NULL。
+- 如果无需在 hints 中指定上述的选取标准，那么可以将 hints 指定为 NULL，在这种情况下会 将 ai_socktype 和 ai_protocol 假 设 为 0 ， 将 ai_flags 假 设 为 （ AI_V4MAPPED |AI_ADDRCONFIG），将 ai_family 假设为 AF_UNSPEC。（glibc 实现有意与 SUSv3 背道而驰，它声称如果 hints 为 NULL，那么会将 ai_flags 假设为 0。）
+
+#### 释放 addrinfo 列表：freeaddrinfo()
+
+- getaddrinfo()函数会动态地为 result 引用的所有结构分配内存（图 59-3），其结果是调用者必须要在不再需要这些结构时释放它们。使用 freeaddrinfo()函数可以方便地在一个步骤中执行这个释放任务。
+
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
+int getaddrinfo(const char *host, const char *service,
+                const struct addrinfo *hints,
+                struct addrinfo **result);
+
+void freeaddrinfo(struct addrinfo *result);
+
+const char *gai_strerror(int errcode);
+```
+
+- 如果希望保留 addrinfo 结构或其关联的 socket 地址结构的一个副本，那么必须要在调用freeaddrinfo()之前复制这些结构。
+
+#### 错误诊断：gai_strerror()
+
+- getaddrinfo()在发生错误时会返回表 59-1 中给出的一个非零错误码
+- 表 59-1                getaddrinfo()和 getnameinfo()返回的错误码
+
+错 误 常 量                                  描述
+EAI_ADDRFAMILY 
+
+在 hints.ai_family 中不存在 host 的地址（没有在 SUSv3 中规定，但大多数实现都对其进行了定义，仅供 getaddrinfo()使用）
+EAI_AGAIN 
+
+名字解析过程中发生临时错误（稍后重试）
+EAI_BADFLAGS 
+
+在 hints.ai_flags 中指定了一个无效的标记
+EAI_FAIL 
+
+访问名字服务器时发生了无法恢复的故障
+EAI_FAMILY 
+
+不支持在 hints.ai_family 中指定的地址族
+EAI_MEMORY 
+
+内存分配故障
+EAI_NODATA 
+
+没有与 host 关联的地址（没有在 SUSv3 中规定，但大多数实现都对其进行了定义，仅供 getaddrinfo()使用）
+EAI_NONAME 
+
+未 知 的 host 或 service ， 或 host 和 service 都 为 NULL ， 或 指 定 了AI_NUMERICSERV同时 service 没有指向一个数值字符串
+EAI_OVERFLOW 
+
+参数缓冲器溢出
+EAI_SERVICE 
+
+hints.ai_socktype 不支持指定的 service（仅供 getaddrinfo()使用）
+EAI_SOCKTYPE 
+
+不支持指定的 hints.ai_socktype（仅供 getaddrinfo()使用）
+EAI_SYSTEM 
+
+通过 errno 返回的系统错误
+
+- 给定表 59-1 中列出的一个错误码，gai_strerror()函数会返回一个描述该错误的字符串。（该字符串通常比表 59-1 中给出的描述更加简洁。）
+
+```c
+#include <sys/socket.h>
+#include <netdb.h>
+
+int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
+                char *host, socklen_t hostlen,
+                char *serv, socklen_t servlen, int flags);
+```
+
+- addr 参数是一个指向待转换的 socket 地址结构的指针，该结构的长度是由 addrlen 指定的。通常，addr 和 addrlen 的值是从 accept()、recvfrom()、getsockname()或 getpeername()调用中获得的。
+- 得到的主机和服务名是以 null 结尾的字符串，它们会被存储在 host 和 service 指向的缓冲器中。调用者必须要为这些缓冲器分配空间并将它们的大小传入 hostlen 和 servlen。<netdb.h>头文件定义了两个常量来辅助计算这些缓冲器的大小。 NI_MAXHOST 指出了返回的主机名字符串的最大字节数，其取值为 1025。NI_MAXSERV 指出了返回的服务名字符串的最大字节数，其取值为 32。这两个常量没有在 SUSv3 中得到规定，但所有提供 getnameinfo()的 UNIX 实现都对它们进行了定义。（从 glibc 2.8 起，必须要定义_BSD_SOURCE、_SVID_SOURCE 或_GNU_SOURCE 中的其中一个特性文本宏才能获取 NI_MAXHOST 和NI_MAXSERV 的定义。）
+- 如果不想获取主机名，那么可以将 host 指定为 NULL 并且将 hostlen 指定为 0。同样地，
+  如果不需要服务名，那么可以将 service 指定为 NULL 并且将 servlen 指定为 0。但是 host 和
+  service 中至少有一个必须为非 NULL 值（并且对应的长度参数必须为非零）。
+- 最后一个参数 flags 是一个位掩码，它控制着 getnameinfo()的行为，其取值为下面这些常
+  量取 OR。
+
+- NI_DGRAM
+
+在默认情况下，getnameinfo()返回与流 socket（即 TCP）服务对应的名字。通常，这是无关紧要的，因为正如 59.9 节中指出的那样，与 TCP 和 UDP 端口对应的服务名通常是相同的，但在一些名字不同的场景中NI_DGRAM 标记会强制返回数据报 socket（即 UDP）服务的名字。
+
+- NI_NAMEREQD
+
+在默认情况下，如果无法解析主机名，那么在 host 中会返回一个数值地址字符串。如果
+指定了 NI_NAMEREQD，那么就会返回一个错误（EAI_NONAME）。
+
+- NI_NOFQDN
+
+在默认情况下会返回主机的完全限定域名。指定 NI_NOFQDN 标记会导致当主机位于局
+域网中时只返回名字的第一部分（即主机名）。
+
+- NI_NUMERICHOST
+
+强制在 host 中返回一个数值地址字符串。这个标记在需要避免可能耗时较长的 DNS 服务
+器调用时是比较有用的。
+
+- NI_NUMERICSERV
+
+强制在 service 中返回一个十进制端口号字符串。这个标记在知道端口号不对应于服务名
+时—如它是一个由内核分配给 socket 的临时端口号—以及需要避免不必要的搜索
+/etc/services 的低效性时是比较有用的。
+
+### 过时的主机和服务转换 API
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+int inet_aton(const char *cp, struct in_addr *inp);
+inet_aton()（“ASCII 到网络”）函数将 str 指向的点分十进制字符串转换成一个网络字节序的 IPv4 地址，转换得到的地址将会返回在 addr 指向的 in_addr 结构中。
+inet_aton()函数在转换成功时返回 1，在 str 无效时返回 0。
+传入 inet_aton()的字符串的数值部分无需是十进制的，它可以是八进制的（通过前导 0指定），也可以是十六进制的（通过前导 0x 或 0X 指定）。
+char *inet_ntoa(struct in_addr in);
+给定一个 in_addr 结构（一个 32 位的网络字节序 IPv4 地址）， inet_ntoa()返回一个指向（静态分配的）包含用点分十进制标记法标记的地址的字符串的指针。
+由于 inet_ntoa()返回的字符串是静态分配的，因此它们会被后续的调用所覆盖。
+```
+
+#### gethostbyname()和 gethostbyaddr()函数
+
+- gethostbyname()和 gethostbyaddr()函数允许在主机名和 IP 地址之间进行转换。现在这些函数已经被 getaddrinfo()和 getnameinfo()所取代了。
+
+```c
+#include <netdb.h>
+extern int h_errno;
+
+struct hostent *gethostbyname(const char *name);
+
+#include <sys/socket.h>       /* for AF_INET */
+struct hostent *gethostbyaddr(const void *addr,
+                              socklen_t len, int type);
+
+struct hostent {
+               char  *h_name;            /* official name of host */
+               char **h_aliases;         /* alias list */
+               int    h_addrtype;        /* host address type */
+               int    h_length;          /* length of address */
+               char **h_addr_list;       /* list of addresses */
+           }
+h_name 字段返回主机的官方名字，它是一个以 null 结尾的字符串。h_aliases 字段指向
+一个指针数组，数组中的指针指向以 null 结尾的包含了该主机名的别名（可选名）的字符串。
+    
+h_addr_list 字段是一个指针数组，数组中的指针指向这个主机的 IP 地址结构。（一个多宿
+主机拥有的地址数超过一个。）这个列表由 in_addr 或 in6_addr 结构构成，通过 h_addrtype 字
+段可以确定这些结构的类型，其取值为 AF_INET 或 AF_INET6；通过 h_length 字段可以确定
+这些结构的长度。提供 h_addr 定义是为了与在 hostent 结构中只返回一个地址的早期实现（如
+4.2BSD）保持向后兼容，一些既有代码依赖于这个名字（因此无法感知多宿主机）。
+
+在现代版本的 gethostbyname()中也可以将 name 指定为一个数值 IP 地址字符串，即 IPv4 的数
+字和点标记法与 IPv6 的十六进制字符串标记法。在这种情况下不会执行任何的查询工作；相反，
+name 会被复制到 hostent 结构的 h_name 字段，h_addr_list 会被设置成 name 的二进制表示形式。
+
+gethostbyaddr()函数执行 gethostbyname()的逆操作。给定一个二进制 IP 地址，它会返回一
+个包含与配置了该地址的主机相关的信息的 hostent 结构。
+    
+在发生错误时（如无法解析一个名字），gethostbyname()和 gethostbyaddr()都会返回一个 NULL
+指针并设置全局变量 h_errno。正如其名字所表达的那样，这个变量与 errno 类似（gethostbyname(3)
+手册描述了这个变量的可取值），herror()和 hstrerror()函数类似于 perror()和 strerror()。
+    
+herror()函数（在标准错误上）显示了在 str 中给出的字符串，后面跟着一个冒号(:)，然后
+再显示一条与当前位于 h_errno 中的错误对应的消息。或者可以使用 hstrerror()获取一个指向
+与在 err 中指定的错误值对应的字符串的指针。
+```
+
+```c
+#include <netdb.h>
+extern int h_errno;
+
+void herror(const char *s);
+
+const char *hstrerror(int err);
+
+herror()函数（在标准错误上）显示了在 str 中给出的字符串，后面跟着一个冒号(:)，然后
+再显示一条与当前位于 h_errno 中的错误对应的消息。或者可以使用 hstrerror()获取一个指向
+与在 err 中指定的错误值对应的字符串的指针。
+```
+
+#### getserverbyname()和 getserverbyport()函数
+
+- getservbyname()和 getservbyport()函数从/etc/services 文件（59.9 节）中获取记录。现在这些函数已经被 getaddrinfo()和 getnameinfo()所取代了。
+
+```C
+#include <netdb.h>
+
+struct servent *getservbyname(const char *name, const char *proto);
+
+struct servent *getservbyport(int port, const char *proto);
+
+struct servent {
+               char  *s_name;       /* official service name */
+               char **s_aliases;    /* alias list */
+               int    s_port;       /* port number */
+               char  *s_proto;      /* protocol to use */
+           }
+getservbyname()函数查询服务名（或其中一个别名）与 name 匹配以及协议与 proto 匹配的记录。proto 参数是一个诸如 tcp 或 udp 之类的字符串，或者也可以将它设置为 NULL。如果将 proto 指定为 NULL，那么就会返回任意一个服务名与 name 匹配的记录。（这种做法通常已经足够了，因为当拥有同样名字的 UDP 和 TCP 记录都位于/etc/services 文件时，它们通常使用同样的端口号。）如果找到了一个匹配的记录，那么 getservbyname()会返回一个指向静态分配的如下类型的结构的指针。
+    
+一般来讲，调用 getservbyname()只为了获取端口号，该值会通过 s_port 字段返回。
+    
+getservbyport()函数执行 getservbyname()的逆操作，它返回一个 servent 记录，该记录包含了/etc/services 文件中端口号与 port 匹配、协议与 proto 匹配的记录相关的信息。同样，可以将 proto指定为 NULL，这样这个调用就会返回任意一个端口号与 port 中指定的值匹配的记录。（在前面提到的一些同一个端口号被映射到不同的 UDP 和 TCP 服务名的情况下可能不会返回期望的结果。）
+```
+
+#### UNIX 与 Internet domain socket 比较
+
+- 当编写通过网络进行通信的应用程序时必须要使用 Internet domain socket，但当位于同一系统上的应用程序使用 socket 进行通信时则可以选择使用 Internet 或 UNIX domain socket。在这种情况下该使用哪个 domain？为何使用这个 domain 呢？
+- 编写只使用 Internet domain socket 的应用程序通常是最简单的做法，因为这种应用程序既能运行于同一个主机上，也能运行在网络中的不同主机上。但之所以要选择使用 UNIX domainsocket 是存在几个原因的。
+
+1. 在一些实现上，UNIX domain socket 的速度比 Internet domain socket 的速度快。
+2. 可以使用目录（在 Linux 上是文件）权限来控制对 UNIX domain socket 的访问，这样只有运行于指定的用户或组 ID 下的应用程序才能够连接到一个监听流 socket 或向一个数据报 socket 发送一个数据报，同时为如何验证客户端提供了一个简单的方法。使用Internet domain socket 时如果需要验证客户端的话就需要做更多的工作了。
+3. 使用 UNIX domain socket 可以像 61.13.3 节中总结的那样传递打开的文件描述符和发送者的验证信息。
+
+
+
+#### 总结
+
+- Internet domain socket 允许位于不同主机上的应用程序通过一个 TCP/IP 网络进行通信。一个 Internet domain socket 地址由一个 IP 地址和一个端口号构成。在 IPv4 中，一个 IP 地址是一个 32 位的数字，在 IPv6 中则是一个 128 位的数字。Internet domain 数据报 socket 运行于UDP 上，它提供了无连接的、不可靠的、面向消息的通信。Internet domain 流 socket 运行于TCP 上，它为相互连接的应用程序提供了可靠的、双向字节流通信信道。
+- 不同的计算机架构使用不同的方式来表示数据类型。如整数可以以小端形式存储也可以以大端形式存储，并且不同的计算机可能使用不同的字节数来表示诸如 int 和 long 之类的数值类型。这些差别意味着当在通过网络连接的异构机器之间传输数据时需要采用某种独立于架构的表示。本章指出了存在多种信号编集标准来解决这个问题，同时还描述了被很多应用程序所采用的一个简单的解决方案：将所有传输的数据编码成文本形式，字段之间使用预先指定的字符（通常是换行符）分隔。
+- 本章介绍了一组用于在 IP 地址的（数值）字符串表示（IPv4 是点分十进制，IPv6 是十六进制字符串）和其二进制值之间进行转换的函数，然而一般来讲最好使用主机和服务名而不是数字，因为名字更容易记忆并且即使在对应的数字发生变化时也能继续使用。此外，还介绍了用于将主机和服务名转换成数值表示及其逆过程的各种函数。将主机和服务名转换成socket 地址的现代函数是 getaddrinfo()，但读者在既有代码中会经常看到早期的 gethostbyname()和 getservbyname()函数。
+- 对主机名转换的思考引出了对 DNS 的讨论，它实现了一个分布式数据库提供层级目录服务。DNS 的优点是数据库的管理不再是集中的了。相反，本地区域管理员可以更新他们所负责的数据库层级部分，并且 DNS 服务器可以与另一台服务器进行通信以便解析一个主机名。
+
+### chap61 SOCKET：高级主题
+
+```c
+#include <sys/socket.h>
+
+int shutdown(int sockfd, int how);
+
+SHUT_RD
+关闭连接的读端。之后的读操作将返回文件结尾（0）。数据仍然可以写入到套接字上。
+在 UNIX 域流式套接字上执行了 SHUT_RD 操作后，对端应用程序将接收到一个 SIGPIPE 信
+号，如果继续尝试在对端套接字上做写操作的话将产生 EPIPE 错误。如 61.6.6 节中讨论的，
+SHUT_RD 对于 TCP 套接字来说没有什么意义。
+
+SHUT_WR
+关闭连接的写端。一旦对端的应用程序已经将所有剩余的数据读取完毕，它就会检测到
+文件结尾。后续对本地套接字的写操作将产生 SIGPIPE 信号以及 EPIPE 错误。而由对端写入
+的数据仍然可以在套接字上读取。换句话说，这个操作允许我们在仍然能读取对端发回给我
+们的数据时，通过文件结尾来通知对端应用程序本地的写端已经关闭了。 SHUT_WR 操作在 ssh
+和 rsh 中都有用到（参见[Stevens，1994]中的 18.5 节）
+。在 shutdown()中最常用到的操作就是
+SHUT_WR，有时候也被称为半关闭套接字。
+    
+SHUT_RDWR
+将连接的读端和写端都关闭。这等同于先执行 SHUT_RD，跟着再执行一次 SHUT_WR操作。
+```
+
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+
+int send(int s, const void *msg, size_t len, int flags);
+
+MSG_DONTWAIT
+让 recv()以非阻塞方式执行。如果没有数据可用，那么 recv()不会阻塞而是立刻返回，
+伴随的错误码为 EAGAIN。我们可以通过 fcntl()把套接字设为非阻塞模式（O_NONBLOCK）
+从而达到相同的效果。区别在于 MSG_DONTWAIT 允许我们在每次调用中控制非阻塞行为。
+MSG_OOB
+在套接字上接收带外数据。我们将在 61.13.1 节中简要描述这个特性。
+    
+MSG_PEEK
+从套接字缓冲区中获取一份请求字节的副本，但不会将请求的字节从缓冲区中实际移除。
+这份数据稍后可以由其他的 recv()或 read()调用重新读取。
+    
+MSG_WAITALL
+通常，recv()调用返回的字节数比请求的字节数（由 length 参数指定）要少，而那些字节实
+际上还在套接字中。指定了 MSG_WAITALL 标记后将导致系统调用阻塞，直到成功接收到 length
+个字节。但是，就算指定了这个标记，当出现如下情况时，该调用返回的字节数可能还是会少
+于请求的字节。这些情况是：（a）捕获到一个信号；（b）流式套接字的对端终止了连接；（c）遇到了带外数据字节（参见 61.13.1 节）；（d）从数据报套接字接收到的消息长度小于 length 个
+字节；（e）套接字上出现了错误。（MSG_WAITALL 标记可以取代我们在程序清单 61-1 中给出
+的 readn()函数，区别在于我们实现的 readn()函数在被信号处理例程中断后会重新得到调用。）
+除了 MSG_DONTWAIT 之外，以上所有标记都在 SUSv3 中有规范。MSG_DONTWAIT
+也存在于其他一些 UNIX 实现中。这个标记加入到套接字 API 的时间比较晚，在一些老式的实现中并不存在。
+对于 send()，flags 参数可以是以下值相或的结果。
+    
+MSG_DONTWAIT
+让 send()以非阻塞方式执行。如果数据不能立刻传输（因为套接字发送缓冲区已满），那
+么该调用不会阻塞，而是调用失败，伴随的错误码为 EAGAIN。和 recv()一样，可以通过对套
+接字设定 O_NONBLOCK 标记来实现同样的效果。
+    
+MSG_MORE（从 Linux 2.4.4 开始）
+在 TCP 套接字上，这个标记实现的效果同套接字选项 TCP_CORK（见 61.4 节）完成的
+功能相同。区别在于该标记可以在每次调用中对数据进行栓塞处理。从 Linux 2.6 版以来，这个
+标记也可以用于数据报套接字，但所代表的意义有所不同。在连续的 send()或 sendto()调用中
+传输的数据，如果指定了 MSG_MORE 标记，那么数据会打包成一个单独的数据报。仅当下一
+次调用中没有指定该标记时数据才会传输出去。（Linux 也提供了类似的 UDP_CORK 套接字
+选项，这将导致在连续的 send()或 sendto()调用中传输的数据会累积成一个单独的数据报，当
+取消 UDP_CORK 选项时才会将其发送出去。）MSG_MORE 标记对 UNIX 域套接字没有任何效果。
+    
+MSG_NOSIGNAL
+当在已连接的流式套接字上发送数据时，如果连接的另一端已经关闭了，指定该标记后将
+不会产生 SIGPIPE 信号。相反，send()调用会失败，伴随的错误码为 EPIPE。这和忽略 SIGPIPE
+信号所得到的行为相同。区别在于该标记可以在每次调用中控制信号发送的行为。
+   
+MSG_OOB
+在流式套接字上发送带外数据。参见 61.13.1 节。
+以上标记中只有 MSG_OOB 在 SUSv3 中有规范。MSG_DONTWAIT 标记也在其他一些
+UNIX 实现中出现过，而 MSG_NOSIGNAL 和 MSG_MORE 都是 Linux 专有的。
+```
+
+```c
+为了传输文件，我们必须使用两个系统调用（可能需要在循环中多次调用）：一个用来将文件内容从内核缓冲区 cache 中拷贝到用户空间，另一个用来将用户空间缓冲区拷贝回内核空间，以此才能通过套接字进行传输。图 61-1
+的左侧展示了这种场景。如果应用程序在发起传输之前根本不对文件内容做任何处理的话，
+那么这种两步式的处理就是一种浪费。系统调用 sendfile()被设计为用来消除这种低效性。如
+图 61-1 右侧所示，当应用程序调用 sendfile()时，文件内容会直接传送到套接字上，而不会经过
+用户空间。这种技术被称为零拷贝传输（zero-copy transfer）。
+
+#include <sys/sendfile.h>
+
+ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
+
+系统调用 sendfile()在代表输入文件的描述符 in_fd 和代表输出文件的描述符 out_fd 之
+间传送文件内容（字节）。描述符 out_fd 必须指向一个套接字。参数 in_fd 指向的文件必须
+是可以进行 mmap()操作的。在实践中，这通常表示一个普通文件。这些局限多少限制了
+sendfile()的使用。我们可以使用 sendfile()将数据从文件传递到套接字上，但反过来就不行。
+另外，我们也不能通过 sendfile()在两个套接字之间直接传送数据。
+    
+如果参数 offset 不是 NULL，它应该指向一个 off_t 值，该值指定了起始文件的偏移量，
+意即从 in_fd 指向的文件的这个位置开始，可以传输字节。这是一个传入传出参数（又叫值一
+结果参数）。在返回的值中，它包含从 in_fd 传输过来的紧靠着最后一个字节的下一个字节的
+偏移量 。在这里，serdfile()不会更改 in_fd 的文件偏移量。
+    
+如果参数 offset 指定为 NULL 的话，那么从 in_fd 传输的字节就从当前的文件偏移量处开
+始，且在传输时会更新文件偏移量以反映出已传输的字节数。
+
+参数 count 指定了请求传输的字节数。如果在 count 个字节完成传输前就遇到了文件结尾符，那
+么只有文件结尾符之前的那些字节能传输。调用成功后，sendfile()会返回实际传输的字节数。
+```
+
+##### TCP_CORK 套接字选项
+
+- 要进一步提高 TCP 应用使用 sendfile()时的性能，采用 Linux 专有的套接字选项 TCP_CORK
+  常常会很有帮助。例如，Web 服务器传送页面给浏览器，作为对请求的响应。Web 服务器的响
+  应由两部分组成：HTTP 首部，也许会通过 write()来输出；页面数据，可以通过 sendfile()来输
+  出。在这种场景下，通常会传输 2 个 TCP 报文段：HTTP 首部在第一个（非常小）报文段中，
+  而页面数据在第二个报文段中发送。这对网络带宽的利用率是不够高效的。可能还会在发送和
+  接收 TCP 报文时做些不必要的工作，因为在许多情况下 HTTP 首部和页面数据都比较小，足以
+  容纳在一个单独的 TCP 报文段中。套接字选项 TCP_CORK 正是被设计为用来解决这种低效性。
+- 当在 TCP 套接字上启用了 TCP_CORK 选项后，之后所有的输出都会缓冲到一个单独的 TCP
+  报文段中，直到满足以下条件为止：已达到报文段的大小上限、取消了 TCP_CORK 选项、套接字
+  被关闭，或者当启用 TCP_CORK 后，从写入第一个字节开始已经经历了 200 毫秒。
+  （如果应用程序忘记取消 TCP_CORK 选项，那么超时时间可确保被缓冲的数据能得以传输。）
+- 我们通过 setsockopt()系统调用（见 61.9 节）来启用或取消 TCP_CORK 选项。下面的代
+  码（省略错误检查）说明了在我们假想的 HTTP 服务器例子中应该如何使用 TCP_CORK 选项。
+
+```c
+int optval;
+optval = 1;
+setsockopt(sockfd, IPPROTO_TCP, TCP_CORK, sizeof(optval));
+wrte(sockfd,...);
+sendfile(sockfd,...);
+...
+optval = 0;
+setsockopt(sockfd, IPPROTO_TCP, TCP_CORK, sizeof(optval));
+```
+
+- 在我们的应用中，通过构建一个单独的数据缓冲区，可以避免出现需要发送两个报文段
+  的情况，之后可以通过一个单独的 write()将缓冲区数据发送出去。（可选的方式是，我们可以通
+  过 writev()将两个独立的缓冲区结合为一次单独的输出操作。）但是，如果我们希望将 sendfile()
+  的零拷贝高效性和传输文件数据时在第一个报文段中包含 HTTP 首部信息的能力结合起来的
+  话，那么我们需要用到 TCP_CORK。
+
+### 获取套接字地址
+
+- getsockname()和 getpeername()这两个系统调用分别返回本地套接字地址以及对端套接字地址。
+
+```c
+#include <sys/socket.h>
+
+int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+
+int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+
+sockfd 表示指向套接字的文件描述符，而 addr 是一个指向 sockaddr 结
+构体的指针，该结构体包含着套接字的地址。这个结构体的大小和类型取决于套接字域。
+Addrlen 是一个保存结果值的参数。在执行调用之前，addrlen 应该被初始化为 addr 所指向的缓
+冲区空间的大小。调用返回后，addrlen 中包含实际写入到这个缓冲区中的字节数。
+
+getsockname()可以返回套接字地址族，以及套接字所绑定到的地址。如果套接字绑定到了另一个程序（比如 inetd(8)），且套接字文件描述符在经过 exec()调用后仍然得到保留，那么此时 getsockname()就能派上用场了。
+
+当隐式绑定到一个 Internet 域套接字上时，如果我们想获取内核分配给套接字的临时端口号，那么调用 getsockname()也是有用的。内核会在出现如下情况时执行一个隐式绑定。
+    已经在 TCP 套接字上执行了 connect()或 listen()调用，但之前还没有通过 bind()绑定到一个地址上。
+    当在 UDP 套接字上首次调用 sendto()时，该套接字之前还没有绑定到地址上。
+    调用 bind()时将端口号（sin_port）指定为 0。这种情况下 bind()会为套接字指定一个IP 地址，但内核会选择一个临时的端口号。
+
+系统调用 getpeername()返回流式套接字连接中对端套接字的地址。如果服务器想找出发
+出连接的客户端地址，这个调用就特别有用，主要用于 TCP 套接字上。对端套接字的地址信
+息也可以在执行 accept()时获取，但是如果服务器进程是由另一个程序调用的，而 accept()是
+由该程序（比如 inetd）所执行，那么服务器进程可以继承套接字文件描述符，但由 accept()
+返回的地址信息就不存在了。
+```
+
